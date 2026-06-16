@@ -64,21 +64,33 @@ With Cantonese output:
 PYTHONPATH=. python src/main.py --symbol BTCUSDT --analyze --lang yue
 ```
 
-### Long-term Live Paper Trading (starts with $900)
+### Long-term Live Paper Trading with Dual-Model Analysis (starts with $900)
 
-Run the AI trader continuously. It analyzes every 15 minutes, decides to buy/sell based on signals, and saves all trades + portfolio history to `trading.db`.
+The trader now uses two different "models" at different frequencies:
+
+- **Every 1 minute** — `deepseek` (FastDeepSeekAnalyzer): quick, permissive signals
+- **Every 15 minutes** — `xai` (DeepXAIAnalyzer): deeper, more conservative analysis that can return **BOTH** (rotate position)
 
 ```bash
-PYTHONPATH=. python src/main.py --symbol BTCUSDT --live --interval 1h
+PYTHONPATH=. python src/main.py --symbol BTCUSDT,ETHUSDT --live --interval 1h
 ```
 
-- Starts with $900 USD cash
-- Uses ~28% of cash per strong BUY signal (when confidence ≥ 55%)
-- Sells on strong SELL signals
-- Saves everything to SQLite (`trading.db`)
-- Press Ctrl+C to stop gracefully and see final equity
+**Features**
+- Starts with $900 USD
+- Supports multiple symbols (BTCUSDT + ETHUSDT by default)
+- `BOTH` decision from the 15-min xAI model = sell current holding + buy the new opportunity
+- All decisions, trades, and equity history saved to `trading.db`
+- Press Ctrl+C to stop
 
-The simulation is designed for long-running sessions (days/weeks) to test if the AI strategy can grow the account over time.
+Example output:
+```
+=== Cycle 15 | DEEP-XAI | 10:45 ===
+BTCUSDT: BOTH (conf 78%) | $66,050.00
+  [XAI] BOTH-SELL 0.01345 BTCUSDT | PnL +$12.30
+  [XAI] BOTH-BUY 0.00412 ETHUSDT @ $3,450.00
+```
+
+This setup lets you test whether the combination of fast cheap signals + periodic deep thinking can profitably grow the account over days or weeks.
 
 ## Disclaimer
 

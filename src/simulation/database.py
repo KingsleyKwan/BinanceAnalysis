@@ -58,7 +58,8 @@ class TradingDB:
                 confidence REAL,
                 rsi REAL,
                 macd_hist REAL,
-                close_price REAL
+                close_price REAL,
+                model TEXT
             )
         """)
         self.conn.commit()
@@ -106,12 +107,12 @@ class TradingDB:
         self.conn.commit()
 
     def log_signal(self, ts: str, symbol: str, action: str, score: float, confidence: float,
-                   rsi: float, macd_hist: float, close_price: float):
+                   rsi: float, macd_hist: float, close_price: float, model: str = ""):
         cur = self.conn.cursor()
         cur.execute("""
-            INSERT INTO signals (timestamp, symbol, action, score, confidence, rsi, macd_hist, close_price)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (ts, symbol, action, score, confidence, rsi, macd_hist, close_price))
+            INSERT INTO signals (timestamp, symbol, action, score, confidence, rsi, macd_hist, close_price, model)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (ts, symbol, action, score, confidence, rsi, macd_hist, close_price, model))
         self.conn.commit()
 
     def get_recent_trades(self, limit: int = 20) -> List[Dict]:
