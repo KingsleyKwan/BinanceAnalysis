@@ -1,6 +1,7 @@
 import os
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import List, Dict, Optional
 from dotenv import load_dotenv
 from src.data.fetcher import BinanceDataFetcher
@@ -44,8 +45,12 @@ class LivePaperTrader:
         self.fast_analyzer = RealDeepSeekAnalyzer() if use_real_deepseek else FastDeepSeekAnalyzer()
         self.deep_analyzer = RealXAIAnalyzer() if use_real_xai else DeepXAIAnalyzer()
 
+        self.paused = False
+        self.current_window_decision_ids = []   # for 15-min self-review
+
         if use_real_deepseek or use_real_xai:
             print(f"[LLM] Using real APIs → DeepSeek: {use_real_deepseek}, xAI: {use_real_xai}")
+            print("[Self-Correction] xAI will review DeepSeek decisions every 15 minutes")
         else:
             print("[LLM] Using local rule-based analyzers (no API keys found)")
 
@@ -131,6 +136,11 @@ class LivePaperTrader:
                 print(f"  [{model.upper()}] BOTH-BUY {amt:.5f} {symbol} @ ${current_price:,.2f}")
 
     def run_once(self):
+        if self.paused:
+            print("[PAUSED] Self-correction in progress. Press Ctrl+C or wait for auto-resume...")
+            time.sleep(10)
+            return
+
         self.cycle_count += 1
         is_deep_cycle = (self.cycle_count % DEEP_INTERVAL == 0)
         analyzer = self.deep_analyzer if is_deep_cycle else self.fast_analyzer
@@ -149,6 +159,28 @@ class LivePaperTrader:
 
                 print(f"{symbol}: {decision['action']} (conf {decision['confidence']*100:.0f}%) | ${current_price:,.2f}")
                 self._execute_decision(symbol, decision, current_price, is_deep=is_deep_cycle)
+
+                # Log DeepSeek decisions for later xAI review
+                if "deepseek" in analyzer.name.lower() and decision.get("model", "").startswith("deepseek"):
+                    from src.analysis.fast_deepseek import FastDeepSeekAnalyzer
+                    # Only log real DeepSeek decisions
+                    if not isinstance(analyzer, FastDeepSeekAnalyzer):
+                        ema_trend = "above" if current_price > df.iloc[-1].get("ema_20", 0) else "below"
+                        vol_ratio = df.iloc[-1].get("volume", 0) / max(df.iloc[-1].get("volume_sma", 1), 1)
+                        self.db.log_deepseek_decision(
+                            datetime.now(timezone.utc).isoformat(),
+                            symbol,
+                            decision["action"],
+                            decision["confidence"],
+                            decision.get("reason", ""),
+                            current_price,
+                            decision["indicators"]["rsi"],
+                            decision["indicators"]["macd_hist"],
+                            ema_trend,
+                            vol_ratio
+                        )
+                        # keep track for current window
+                        self.current_window_decision_ids.append(symbol)  # simplified
             except Exception as e:
                 print(f"Error on {symbol}: {e}")
 
@@ -156,6 +188,87 @@ class LivePaperTrader:
         now = datetime.now(timezone.utc).isoformat()
         self.db.save_snapshot(now, self.cash, total)
         print(f"Equity: ${total:.2f} | Cash: ${self.cash:.2f} | Holdings: { {k: round(v['amount'],4) for k,v in self.holdings.items()} }")
+
+        # === Self-correction review every 15 minutes ===
+        if is_deep_cycle and isinstance(self.deep_analyzer, _RealXAIAnalyzer):
+            self._perform_self_correction_review(prices)
+
+    def _perform_self_correction_review(self, current_prices: dict):
+        """xAI reviews the last 15 minutes of DeepSeek decisions and teaches it if wrong."""
+        print("\n" + "="*60)
+        print("[SELF-CORRECTION] xAI (grok-4.3) reviewing DeepSeek decisions from last 15 min...")
+        print("="*60)
+
+        unreviewed = self.db.get_unreviewed_deepseek_decisions(limit=20)
+        if not unreviewed:
+            print("[Self-Correction] No unreviewed DeepSeek decisions.")
+            return
+
+        # Fetch latest price for each decision's symbol
+        review_prices = {}
+        for d in unreviewed:
+            try:
+                latest = self.fetcher.get_current_price(d["symbol"])
+                review_prices[d["symbol"]] = latest
+            except:
+                review_prices[d["symbol"]] = d["close_price"]
+
+        # Ask xAI to review
+        review_result = self.deep_analyzer.review_deepseek_decisions(unreviewed, review_prices)
+
+        has_errors = False
+        lessons_to_add = []
+
+        for j in review_result.get("judgments", []):
+            decision_id = j.get("id")
+            judgment = j.get("judgment", "CORRECT")
+            explanation = j.get("explanation", "")
+            lesson = j.get("lesson", "")
+
+            if judgment == "WRONG":
+                has_errors = True
+                print(f"\n[ERROR DETECTED] Decision #{decision_id} was WRONG")
+                print(f"  Explanation: {explanation}")
+                if lesson:
+                    lessons_to_add.append(lesson)
+                    print(f"  Lesson for DeepSeek: {lesson}")
+
+            # Update DB
+            sym = next((d["symbol"] for d in unreviewed if d["id"] == decision_id), "BTCUSDT")
+            self.db.update_deepseek_judgment(
+                decision_id,
+                review_prices.get(sym, 0),
+                judgment,
+                explanation
+            )
+
+        if has_errors and lessons_to_add:
+            print("\n" + "!"*60)
+            print("[PAUSING SYSTEM] Mistakes found. xAI will now teach DeepSeek...")
+            self.paused = True
+
+            # Append lessons to the skill file
+            self._append_lessons_to_skill(lessons_to_add)
+
+            print("[Self-Correction] Lessons added to deepseek_lessons.md")
+            print("[Self-Correction] System will resume in 30 seconds...")
+            time.sleep(30)
+            self.paused = False
+            print("[Self-Correction] Resuming trading loop.\n" + "="*60)
+        else:
+            print("[Self-Correction] All DeepSeek decisions in this window were correct. No lessons needed.")
+
+    def _append_lessons_to_skill(self, lessons: list):
+        """Append new lessons to the DeepSeek skill file."""
+        skill_path = Path(__file__).parent.parent / "analysis" / "deepseek_lessons.md"
+        if not skill_path.exists():
+            return
+
+        with open(skill_path, "a", encoding="utf-8") as f:
+            f.write("\n")
+            for lesson in lessons:
+                f.write(f"- {lesson}\n")
+            f.write(f"\n<!-- Reviewed at {datetime.now().isoformat()} by grok-4.3 -->\n")
 
     def run_forever(self):
         print("Dual-model paper trader started (1-min DeepSeek + 15-min xAI). Ctrl+C to stop.")

@@ -85,3 +85,68 @@ Return ONLY this JSON:
             }
         except Exception as e:
             return {**local_result, "model": "xai-local-error", "reason": f"api error: {str(e)[:60]}"}
+
+    def review_deepseek_decisions(self, decisions: list, current_prices: dict) -> dict:
+        """
+        Grok-4.3 reviews a batch of DeepSeek decisions from the last 15 minutes.
+        Returns a structured judgment + lessons if mistakes found.
+        """
+        if not self.client or not decisions:
+            return {"judgments": [], "new_lessons": [], "has_errors": False}
+
+        prompt = """You are Grok-4.3 acting as a senior trading supervisor.
+You will review decisions made by DeepSeek-v4-flash over the last 15 minutes.
+
+For each decision, you are given:
+- timestamp, symbol, action (BUY/SELL/HOLD), confidence, reason
+- technical indicators at decision time
+- actual price 15 minutes later
+
+Your task:
+1. For each decision, judge if it was CORRECT or WRONG based on what actually happened.
+2. If WRONG, explain why and create a concise lesson (max 25 words) that can be taught to DeepSeek to avoid the same mistake.
+3. Return ONLY valid JSON in this exact format:
+
+{
+  "judgments": [
+    {
+      "id": <decision_id>,
+      "judgment": "CORRECT" | "WRONG",
+      "explanation": "short reason",
+      "lesson": "one sentence lesson (only if WRONG)"
+    }
+  ],
+  "summary": "overall assessment of DeepSeek performance in this window"
+}
+
+Here are the decisions to review:
+"""
+
+        for d in decisions:
+            price_now = current_prices.get(d["symbol"], d["close_price"])
+            prompt += f"""
+---
+Decision ID: {d['id']}
+Time: {d['timestamp']}
+Symbol: {d['symbol']}
+Action: {d['action']} (conf {d['confidence']})
+Reason: {d['reason']}
+Indicators: RSI={d['rsi']:.1f}, MACD_hist={d['macd_hist']:.4f}, Close={d['close_price']:.2f}
+15-min later price: {price_now:.2f} (change: {((price_now - d['close_price']) / d['close_price'] * 100):+.2f}%)
+---
+"""
+
+        prompt += "\nReturn ONLY the JSON object above."
+
+        try:
+            resp = self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=800,
+                response_format={"type": "json_object"},
+            )
+            content = resp.choices[0].message.content
+            return json.loads(content)
+        except Exception as e:
+            return {"judgments": [], "new_lessons": [], "has_errors": False, "error": str(e)[:80]}

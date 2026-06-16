@@ -115,6 +115,17 @@ XAI_API_KEY=xai-...
 - You can override models via `DEEPSEEK_MODEL` and `XAI_MODEL` in `.env`.
 - Monitor your usage. The system falls back to local analyzers if API fails.
 
+### Self-Correction System (Unique Feature)
+
+Every 15 minutes, **grok-4.3** automatically reviews all decisions made by **deepseek-v4-flash** in the previous window.
+
+- It compares each decision against what actually happened in the next 15 minutes.
+- If DeepSeek made a mistake, the system **pauses**, xAI generates a concise lesson, and appends it to `src/analysis/deepseek_lessons.md`.
+- The lesson is automatically included in all future DeepSeek prompts (few-shot learning).
+- After the correction, the system resumes automatically.
+
+This creates a continuously improving trading agent that learns from its own mistakes in real time.
+
 ## Disclaimer
 
 This is for educational and simulation purposes only. Not financial advice. Cryptocurrency trading involves substantial risk.

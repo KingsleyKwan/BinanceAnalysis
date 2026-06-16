@@ -62,6 +62,25 @@ class TradingDB:
                 model TEXT
             )
         """)
+        # DeepSeek decision log for xAI 15-min review
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS deepseek_decisions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT,
+                symbol TEXT,
+                action TEXT,
+                confidence REAL,
+                reason TEXT,
+                close_price REAL,
+                rsi REAL,
+                macd_hist REAL,
+                ema_trend TEXT,
+                volume_ratio REAL,
+                price_15min_later REAL,
+                xai_judgment TEXT,           -- CORRECT / WRONG / REVIEWED
+                xai_correction TEXT
+            )
+        """)
         self.conn.commit()
 
     def save_snapshot(self, timestamp: str, cash: float, total_equity: float):
@@ -119,6 +138,39 @@ class TradingDB:
         cur = self.conn.cursor()
         rows = cur.execute("SELECT * FROM trades ORDER BY timestamp DESC LIMIT ?", (limit,)).fetchall()
         return [dict(r) for r in rows]
+
+    def log_deepseek_decision(self, ts: str, symbol: str, action: str, confidence: float,
+                              reason: str, close_price: float, rsi: float, macd_hist: float,
+                              ema_trend: str, volume_ratio: float):
+        cur = self.conn.cursor()
+        cur.execute("""
+            INSERT INTO deepseek_decisions
+            (timestamp, symbol, action, confidence, reason, close_price, rsi, macd_hist,
+             ema_trend, volume_ratio, price_15min_later, xai_judgment, xai_correction)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)
+        """, (ts, symbol, action, confidence, reason, close_price, rsi, macd_hist,
+              ema_trend, volume_ratio))
+        self.conn.commit()
+
+    def get_unreviewed_deepseek_decisions(self, limit: int = 20):
+        cur = self.conn.cursor()
+        rows = cur.execute("""
+            SELECT * FROM deepseek_decisions
+            WHERE xai_judgment IS NULL
+            ORDER BY timestamp DESC
+            LIMIT ?
+        """, (limit,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def update_deepseek_judgment(self, decision_id: int, price_15min_later: float,
+                                  judgment: str, correction: str = ""):
+        cur = self.conn.cursor()
+        cur.execute("""
+            UPDATE deepseek_decisions
+            SET price_15min_later = ?, xai_judgment = ?, xai_correction = ?
+            WHERE id = ?
+        """, (price_15min_later, judgment, correction, decision_id))
+        self.conn.commit()
 
     def close(self):
         self.conn.close()

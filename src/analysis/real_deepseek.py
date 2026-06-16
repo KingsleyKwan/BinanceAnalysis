@@ -1,5 +1,6 @@
 import os
 import json
+from pathlib import Path
 from typing import Dict, Any
 import pandas as pd
 from openai import OpenAI
@@ -10,12 +11,12 @@ load_dotenv()
 
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+LESSONS_FILE = Path(__file__).parent / "deepseek_lessons.md"
 
 class RealDeepSeekAnalyzer(BaseAnalyzer):
     """
-    Real DeepSeek API analyzer (DeepSeek-V3 / V2.5).
-    Intended for 1-minute fast decisions.
-    Falls back to local rule-based if no API key or on error.
+    Real DeepSeek API analyzer using deepseek-v4-flash.
+    Lessons from xAI reviews are automatically appended to the prompt.
     """
 
     name = "deepseek-real"
@@ -25,6 +26,15 @@ class RealDeepSeekAnalyzer(BaseAnalyzer):
         self.client = None
         if DEEPSEEK_API_KEY:
             self.client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
+        self.lessons = self._load_lessons()
+
+    def _load_lessons(self) -> str:
+        if LESSONS_FILE.exists():
+            content = LESSONS_FILE.read_text()
+            # Only take the part after the marker
+            if "<!-- xAI will append new lessons below this line -->" in content:
+                return content.split("<!-- xAI will append new lessons below this line -->", 1)[1].strip()
+        return ""
 
     def _build_prompt(self, df: pd.DataFrame, symbol: str) -> str:
         latest = df.iloc[-1]
@@ -50,6 +60,9 @@ Return ONLY valid JSON:
   "reason": "short explanation"
 }
 """
+
+        if self.lessons:
+            prompt = "=== Lessons from previous xAI reviews (learn from these) ===\n" + self.lessons + "\n\n" + prompt
         return prompt
 
     def analyze(self, df: pd.DataFrame, symbol: str = "") -> Dict[str, Any]:
