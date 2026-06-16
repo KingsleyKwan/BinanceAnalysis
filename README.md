@@ -33,7 +33,15 @@ AI-powered cryptocurrency trading simulation and analysis tool for Binance.
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-python src/main.py --symbol BTCUSDT --analyze
+PYTHONPATH=. python src/main.py --symbol BTCUSDT --analyze
+```
+
+### Cantonese (粵語) Support
+
+Use `--lang yue` (or `-l yue`) for written Cantonese output:
+
+```bash
+PYTHONPATH=. python src/main.py --symbol BTCUSDT --analyze --lang yue
 ```
 
 ## Usage Examples
@@ -41,13 +49,19 @@ python src/main.py --symbol BTCUSDT --analyze
 Analyze current timing for BTC:
 
 ```bash
-python src/main.py --symbol BTCUSDT --analyze --interval 1h
+PYTHONPATH=. python src/main.py --symbol BTCUSDT --analyze --interval 1h
 ```
 
 Run backtest:
 
 ```bash
-python src/main.py --symbol ETHUSDT --backtest --days 90
+PYTHONPATH=. python src/main.py --symbol ETHUSDT --backtest --days 90
+```
+
+With Cantonese output:
+
+```bash
+PYTHONPATH=. python src/main.py --symbol BTCUSDT --analyze --lang yue
 ```
 
 ## Disclaimer
