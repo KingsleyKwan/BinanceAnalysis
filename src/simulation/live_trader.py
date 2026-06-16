@@ -12,6 +12,7 @@ from src.analysis.real_deepseek import RealDeepSeekAnalyzer
 from src.analysis.real_xai import RealXAIAnalyzer
 from src.simulation.database import TradingDB
 from src.analysis.real_xai import RealXAIAnalyzer as _RealXAIAnalyzer  # for isinstance check
+from src.notification.telegram import TelegramNotifier
 
 load_dotenv()
 
@@ -85,6 +86,9 @@ class LivePaperTrader:
         if auto_discover:
             print("[Auto-Discover] System will dynamically research coins across the entire market")
 
+        # Telegram notifications (optional)
+        self.notifier = TelegramNotifier()
+
         self._load_state()
 
     def _load_state(self):
@@ -145,6 +149,7 @@ class LivePaperTrader:
             self.db.update_holding(symbol, amt, current_price, now)
             self.db.log_trade(now, symbol, "BUY", current_price, amt, invest, fee, f"{model}-buy")
             print(f"  [{model.upper()}] BUY {amt:.5f} {symbol} @ ${current_price:,.2f}")
+            self.notifier.notify_trade("BUY", symbol, current_price, amt, invest, reason=f"{model} decision")
 
         elif action == "SELL" and amount_held > 0:
             usd_val = amount_held * current_price
@@ -155,6 +160,7 @@ class LivePaperTrader:
             print(f"  [{model.upper()}] SELL {amount_held:.5f} {symbol} @ ${current_price:,.2f} | PnL ${pnl:+.2f}")
             self.holdings[symbol] = {"amount": 0, "avg_buy_price": 0}
             self.db.update_holding(symbol, 0, 0, now)
+            self.notifier.notify_trade("SELL", symbol, current_price, amount_held, usd_val, pnl=pnl, reason=f"{model} decision")
 
         elif action == "BOTH":
             # Deep model wants to rotate: sell current holdings, buy this symbol (or strongest other)
@@ -167,6 +173,7 @@ class LivePaperTrader:
                 print(f"  [{model.upper()}] BOTH-SELL {amount_held:.5f} {symbol} | PnL ${pnl:+.2f}")
                 self.holdings[symbol] = {"amount": 0, "avg_buy_price": 0}
                 self.db.update_holding(symbol, 0, 0, now)
+                self.notifier.notify_trade("BOTH-SELL", symbol, current_price, amount_held, usd_val, pnl=pnl, reason=f"{model} rotation")
 
             # Then buy this symbol with fresh capital (respect per-coin risk limit)
             if self.cash > 50:
@@ -181,6 +188,7 @@ class LivePaperTrader:
                 self.db.update_holding(symbol, amt, current_price, now)
                 self.db.log_trade(now, symbol, "BUY", current_price, amt, invest, fee, f"{model}-BOTH-buy")
                 print(f"  [{model.upper()}] BOTH-BUY {amt:.5f} {symbol} @ ${current_price:,.2f}")
+                self.notifier.notify_trade("BOTH-BUY", symbol, current_price, amt, invest, reason=f"{model} rotation")
 
     def run_once(self):
         if self.paused:
@@ -245,6 +253,8 @@ class LivePaperTrader:
         # === Self-correction review (only on 2-hour grok cycle) ===
         if is_deep_cycle and isinstance(self.deep_analyzer, _RealXAIAnalyzer):
             self._perform_self_correction_review(prices)
+            # Send portfolio summary every 2 hours
+            self.notifier.notify_portfolio(self.cash, total, self.holdings)
 
         # === Auto-discovery refresh (every deep cycle) ===
         if self.auto_discover and is_deep_cycle and (self.cycle_count - self.last_discovery_cycle >= 15):
@@ -315,6 +325,7 @@ class LivePaperTrader:
 
             print("[Self-Correction] Lessons added to deepseek_lessons.md")
             print("[Self-Correction] System will resume in 30 seconds...")
+            self.notifier.notify_self_correction(mistakes=len(lessons_to_add), lessons_added=len(lessons_to_add))
             time.sleep(30)
             self.paused = False
             print("[Self-Correction] Resuming trading loop.\n" + "="*60)

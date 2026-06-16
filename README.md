@@ -97,6 +97,26 @@ PYTHONPATH=. python src/main.py --live --auto-discover --interval 1h \
 
 The goal of the system is to **maximize profit** by letting the dual-model AI (deepseek-v4-flash + grok-4.3) dynamically allocate across multiple high-quality coins (or any coin the scanner discovers) while the self-correction mechanism continuously improves decision quality.
 
+### Telegram Notifications (Optional)
+
+The system can send real-time trade alerts and portfolio updates via Telegram.
+
+1. Create a bot with [@BotFather](https://t.me/BotFather) and copy the token.
+2. Get your chat ID from [@userinfobot](https://t.me/userinfobot).
+3. Add to `.env`:
+
+```bash
+TELEGRAM_BOT_TOKEN=123456:ABC-DEF...
+TELEGRAM_CHAT_ID=987654321
+```
+
+Notifications include:
+- Every trade (BUY / SELL / BOTH) with price, amount, PnL
+- Self-correction events (when mistakes are found and lessons are added)
+- Portfolio summary every 2 hours
+
+If the variables are not set, notifications are silently disabled.
+
 Example output:
 ```
 === Cycle 15 | DEEP-XAI | 10:45 ===
