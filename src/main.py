@@ -2,6 +2,7 @@ import argparse
 from src.data.fetcher import BinanceDataFetcher
 from src.analysis.analyzer import AIAnalyzer
 from src.simulation.backtester import SimpleBacktester
+from src.simulation.live_trader import LivePaperTrader
 
 # Translations for English and Cantonese (written Cantonese / 書面粵語)
 TRANSLATIONS = {
@@ -60,7 +61,14 @@ def main():
     parser.add_argument("--days", type=int, default=60, help="Days of history for backtest")
     parser.add_argument("--lang", "-l", choices=["en", "yue"], default="en",
                         help="Output language: en (English) or yue (Cantonese)")
+    parser.add_argument("--live", action="store_true",
+                        help="Run long-term live paper trading simulation (every 15 min, starts with $900)")
     args = parser.parse_args()
+
+    if args.live:
+        trader = LivePaperTrader(symbols=[args.symbol], interval=args.interval, initial_cash=900.0)
+        trader.run_forever()
+        return
 
     lang = args.lang
     t = TRANSLATIONS[lang]

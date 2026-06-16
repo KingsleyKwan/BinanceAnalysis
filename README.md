@@ -64,6 +64,22 @@ With Cantonese output:
 PYTHONPATH=. python src/main.py --symbol BTCUSDT --analyze --lang yue
 ```
 
+### Long-term Live Paper Trading (starts with $900)
+
+Run the AI trader continuously. It analyzes every 15 minutes, decides to buy/sell based on signals, and saves all trades + portfolio history to `trading.db`.
+
+```bash
+PYTHONPATH=. python src/main.py --symbol BTCUSDT --live --interval 1h
+```
+
+- Starts with $900 USD cash
+- Uses ~28% of cash per strong BUY signal (when confidence ≥ 55%)
+- Sells on strong SELL signals
+- Saves everything to SQLite (`trading.db`)
+- Press Ctrl+C to stop gracefully and see final equity
+
+The simulation is designed for long-running sessions (days/weeks) to test if the AI strategy can grow the account over time.
+
 ## Disclaimer
 
 This is for educational and simulation purposes only. Not financial advice. Cryptocurrency trading involves substantial risk.
