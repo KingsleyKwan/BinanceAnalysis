@@ -69,6 +69,12 @@ def main():
                         help="Starting BTC amount held (for --live mode)")
     parser.add_argument("--auto-discover", action="store_true",
                         help="Let the system automatically discover tradable coins across the entire Binance market (no symbol limit)")
+    parser.add_argument("--report", action="store_true",
+                        help="Show performance report for the last N hours")
+    parser.add_argument("--hours", type=int, default=24,
+                        help="Hours to look back for --report (default 24)")
+    parser.add_argument("--status", action="store_true",
+                        help="Show current portfolio status")
     args = parser.parse_args()
 
     if args.live:
@@ -87,6 +93,27 @@ def main():
             auto_discover=args.auto_discover
         )
         trader.run_forever()
+        return
+
+    if args.report or args.status:
+        from src.simulation.database import TradingDB
+        db = TradingDB()
+        if args.report:
+            report = db.get_performance_report(hours=args.hours)
+            print(f"\n=== {args.hours}-Hour Performance Report ===")
+            print(f"Start Equity : ${report['start_equity']:.2f}")
+            print(f"Current Equity: ${report['current_equity']:.2f}")
+            print(f"Return       : {report['return_pct']:+.2f}%")
+            print(f"Trades       : {report['trade_count']}")
+            print(f"Win Rate     : {report['win_rate']:.1f}%")
+        if args.status:
+            portfolio = db.get_latest_portfolio()
+            holdings = db.get_holdings()
+            print(f"\n=== Current Status ===")
+            print(f"Cash         : ${portfolio['cash']:.2f}")
+            print(f"Total Equity : ${portfolio['total_equity']:.2f}")
+            print(f"Holdings     : {holdings if holdings else 'none'}")
+        db.close()
         return
 
     lang = args.lang

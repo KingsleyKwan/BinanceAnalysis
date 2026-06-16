@@ -1,6 +1,6 @@
 import sqlite3
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 
@@ -171,6 +171,52 @@ class TradingDB:
             WHERE id = ?
         """, (price_15min_later, judgment, correction, decision_id))
         self.conn.commit()
+
+    def get_performance_report(self, hours: int = 24):
+        """Return performance stats for the last N hours."""
+        cur = self.conn.cursor()
+
+        since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+
+        # Current equity
+        current = cur.execute("""
+            SELECT total_equity FROM portfolio_snapshots
+            ORDER BY timestamp DESC LIMIT 1
+        """).fetchone()
+        current_equity = current["total_equity"] if current else 0
+
+        # Start equity (first snapshot in the window)
+        start_row = cur.execute("""
+            SELECT total_equity FROM portfolio_snapshots
+            WHERE timestamp >= ?
+            ORDER BY timestamp ASC LIMIT 1
+        """, (since,)).fetchone()
+        start_equity = start_row["total_equity"] if start_row else current_equity
+
+        # Trades in the period
+        trades = cur.execute("""
+            SELECT COUNT(*) as cnt,
+                   SUM(CASE WHEN side = 'SELL' AND notes LIKE '%pnl=%' 
+                            AND CAST(SUBSTR(notes, INSTR(notes, '$')+1) AS REAL) > 0 
+                       THEN 1 ELSE 0 END) as wins
+            FROM trades
+            WHERE timestamp >= ?
+        """, (since,)).fetchone()
+
+        trade_count = trades["cnt"] if trades else 0
+        win_count = trades["wins"] if trades else 0
+        win_rate = (win_count / trade_count * 100) if trade_count > 0 else 0
+
+        return_pct = ((current_equity - start_equity) / start_equity * 100) if start_equity > 0 else 0
+
+        return {
+            "hours": hours,
+            "start_equity": round(start_equity, 2),
+            "current_equity": round(current_equity, 2),
+            "return_pct": round(return_pct, 2),
+            "trade_count": trade_count,
+            "win_rate": round(win_rate, 1),
+        }
 
     def close(self):
         self.conn.close()
