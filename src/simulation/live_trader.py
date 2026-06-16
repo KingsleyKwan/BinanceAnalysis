@@ -17,7 +17,8 @@ load_dotenv()
 
 FEE_RATE = 0.001
 POLL_INTERVAL_SEC = 60          # 1 minute
-DEEP_INTERVAL = 15              # every 15 cycles = 15 minutes
+MEDIUM_INTERVAL = 15            # every 15 cycles = 15 minutes → deepseek-v4-pro
+DEEP_REVIEW_INTERVAL = 120      # every 120 cycles = 2 hours → grok-4.3 + self-correction
 POSITION_SIZE_PCT = 0.30
 MIN_CONF_FAST = 0.50
 MIN_CONF_DEEP = 0.65
@@ -59,15 +60,25 @@ class LivePaperTrader:
         use_real_deepseek = bool(os.getenv("DEEPSEEK_API_KEY"))
         use_real_xai = bool(os.getenv("XAI_API_KEY"))
 
-        self.fast_analyzer = RealDeepSeekAnalyzer() if use_real_deepseek else FastDeepSeekAnalyzer()
-        self.deep_analyzer = RealXAIAnalyzer() if use_real_xai else DeepXAIAnalyzer()
+        # Three-tier model schedule for cost optimization
+        # 1-min: deepseek-v4-flash (fast & cheap)
+        # 15-min: deepseek-v4-pro (deeper, still cheap)
+        # 2-hr : grok-4.3 (most expensive, used only for deep review + self-correction)
+        if use_real_deepseek:
+            self.fast_analyzer = RealDeepSeekAnalyzer(model="deepseek-v4-flash")
+            self.medium_analyzer = RealDeepSeekAnalyzer(model="deepseek-v4-pro")
+        else:
+            self.fast_analyzer = FastDeepSeekAnalyzer()
+            self.medium_analyzer = FastDeepSeekAnalyzer()
+
+        self.deep_analyzer = RealXAIAnalyzer(model="grok-4.3") if use_real_xai else DeepXAIAnalyzer()
 
         self.paused = False
         self.last_discovery_cycle = 0
 
         if use_real_deepseek or use_real_xai:
             print(f"[LLM] Using real APIs → DeepSeek: {use_real_deepseek}, xAI: {use_real_xai}")
-            print("[Self-Correction] xAI will review DeepSeek decisions every 15 minutes")
+            print("[Schedule] 1-min: deepseek-v4-flash | 15-min: deepseek-v4-pro | 2-hr: grok-4.3 + self-correction")
         else:
             print("[LLM] Using local rule-based analyzers (no API keys found)")
 
@@ -178,11 +189,22 @@ class LivePaperTrader:
             return
 
         self.cycle_count += 1
-        is_deep_cycle = (self.cycle_count % DEEP_INTERVAL == 0)
-        analyzer = self.deep_analyzer if is_deep_cycle else self.fast_analyzer
-        model_name = analyzer.name.upper()
 
-        print(f"\n=== Cycle {self.cycle_count} | {'DEEP-XAI' if is_deep_cycle else 'FAST-DEEPSEEK'} | {datetime.now().strftime('%H:%M')} ===")
+        # Determine which analyzer tier to use
+        is_deep_cycle = (self.cycle_count % DEEP_REVIEW_INTERVAL == 0)
+        is_medium_cycle = (self.cycle_count % MEDIUM_INTERVAL == 0) and not is_deep_cycle
+
+        if is_deep_cycle:
+            analyzer = self.deep_analyzer
+            tier = "DEEP-GROK-2HR"
+        elif is_medium_cycle:
+            analyzer = self.medium_analyzer
+            tier = "MEDIUM-PRO-15MIN"
+        else:
+            analyzer = self.fast_analyzer
+            tier = "FAST-FLASH-1MIN"
+
+        print(f"\n=== Cycle {self.cycle_count} | {tier} | {datetime.now().strftime('%H:%M')} ===")
 
         prices = {}
         for symbol in self.symbols:
@@ -220,7 +242,7 @@ class LivePaperTrader:
         self.db.save_snapshot(now, self.cash, total)
         print(f"Equity: ${total:.2f} | Cash: ${self.cash:.2f} | Holdings: { {k: round(v['amount'],4) for k,v in self.holdings.items()} }")
 
-        # === Self-correction review every 15 minutes ===
+        # === Self-correction review (only on 2-hour grok cycle) ===
         if is_deep_cycle and isinstance(self.deep_analyzer, _RealXAIAnalyzer):
             self._perform_self_correction_review(prices)
 

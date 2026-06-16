@@ -22,7 +22,9 @@ class RealDeepSeekAnalyzer(BaseAnalyzer):
     name = "deepseek-real"
 
     def __init__(self, model: str = None):
-        self.model = model or os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
+        # Support both flash (fast) and pro (deeper) models
+        default_model = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
+        self.model = model or default_model
         self.client = None
         if DEEPSEEK_API_KEY:
             self.client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
