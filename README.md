@@ -79,9 +79,15 @@ PYTHONPATH=. python src/main.py --symbol BTCUSDT --live --interval 1h \
 # Multi-coin mode (recommended for maximum profit potential)
 PYTHONPATH=. python src/main.py --symbol "BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT" \
   --live --interval 1h --initial-cash 376 --initial-btc 0.005
+
+# Fully automatic discovery mode (no coin limit)
+# The system will scan the entire Binance market every 15 minutes and trade any coin showing strong signals
+PYTHONPATH=. python src/main.py --live --auto-discover --interval 1h \
+  --initial-cash 376 --initial-btc 0.005
 ```
 
 **Features**
+- **Auto-Discover mode** (`--auto-discover`): System dynamically finds tradable coins across the whole market. No need to specify symbols. Ideal when "almost all coins go down but some go up".
 - Multi-coin trading supported — system can hold and rotate between multiple assets
 - Custom initial portfolio supported (example: 376 FDUSD + 0.005 BTC)
 - `BOTH` decision from the 15-min xAI model = sell current holding + buy the new opportunity
@@ -89,7 +95,7 @@ PYTHONPATH=. python src/main.py --symbol "BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSD
 - All decisions, trades, and equity history saved to `trading.db`
 - Press Ctrl+C to stop
 
-The goal of the system is to **maximize profit** by letting the dual-model AI (deepseek-v4-flash + grok-4.3) dynamically allocate across multiple high-quality coins while the self-correction mechanism continuously improves decision quality.
+The goal of the system is to **maximize profit** by letting the dual-model AI (deepseek-v4-flash + grok-4.3) dynamically allocate across multiple high-quality coins (or any coin the scanner discovers) while the self-correction mechanism continuously improves decision quality.
 
 Example output:
 ```

@@ -67,6 +67,8 @@ def main():
                         help="Starting stablecoin balance (FDUSD/USDT) for --live mode")
     parser.add_argument("--initial-btc", type=float, default=0.005,
                         help="Starting BTC amount held (for --live mode)")
+    parser.add_argument("--auto-discover", action="store_true",
+                        help="Let the system automatically discover tradable coins across the entire Binance market (no symbol limit)")
     args = parser.parse_args()
 
     if args.live:
@@ -78,10 +80,11 @@ def main():
             initial_holdings["BTCUSDT"] = {"amount": args.initial_btc, "avg_buy_price": 65000.0}
 
         trader = LivePaperTrader(
-            symbols=symbols,
+            symbols=symbols if not args.auto_discover else None,
             interval=args.interval,
             initial_cash=args.initial_cash,
-            initial_holdings=initial_holdings
+            initial_holdings=initial_holdings,
+            auto_discover=args.auto_discover
         )
         trader.run_forever()
         return

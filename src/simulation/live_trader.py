@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import List, Dict, Optional
 from dotenv import load_dotenv
 from src.data.fetcher import BinanceDataFetcher
+from src.data.scanner import CoinScanner
 from src.analysis.fast_deepseek import FastDeepSeekAnalyzer
 from src.analysis.deep_xai import DeepXAIAnalyzer
 from src.analysis.real_deepseek import RealDeepSeekAnalyzer
@@ -31,14 +32,24 @@ class LivePaperTrader:
 
     def __init__(self, symbols: List[str] = None, interval: str = "1h",
                  initial_cash: float = 376.0,
-                 initial_holdings: Dict[str, Dict] = None):
+                 initial_holdings: Dict[str, Dict] = None,
+                 auto_discover: bool = False):
         """
         initial_cash: starting stablecoin balance (FDUSD / USDT)
         initial_holdings: e.g. {"BTCUSDT": {"amount": 0.005, "avg_buy_price": 65000.0}}
+        auto_discover: if True, the system will dynamically find tradable coins every 15-30 min
         """
-        self.symbols = symbols or ["BTCUSDT"]
         self.interval = interval
         self.fetcher = BinanceDataFetcher()
+        self.scanner = CoinScanner(top_n=12) if auto_discover else None
+        self.auto_discover = auto_discover
+
+        # Initial symbol list
+        if auto_discover:
+            self.symbols = self.scanner.discover()
+        else:
+            self.symbols = symbols or ["BTCUSDT"]
+
         self.db = TradingDB()
         self.cash = initial_cash
         self.holdings: Dict[str, Dict] = initial_holdings or {}
@@ -52,13 +63,16 @@ class LivePaperTrader:
         self.deep_analyzer = RealXAIAnalyzer() if use_real_xai else DeepXAIAnalyzer()
 
         self.paused = False
-        self.current_window_decision_ids = []
+        self.last_discovery_cycle = 0
 
         if use_real_deepseek or use_real_xai:
             print(f"[LLM] Using real APIs → DeepSeek: {use_real_deepseek}, xAI: {use_real_xai}")
             print("[Self-Correction] xAI will review DeepSeek decisions every 15 minutes")
         else:
             print("[LLM] Using local rule-based analyzers (no API keys found)")
+
+        if auto_discover:
+            print("[Auto-Discover] System will dynamically research coins across the entire market")
 
         self._load_state()
 
@@ -209,6 +223,16 @@ class LivePaperTrader:
         # === Self-correction review every 15 minutes ===
         if is_deep_cycle and isinstance(self.deep_analyzer, _RealXAIAnalyzer):
             self._perform_self_correction_review(prices)
+
+        # === Auto-discovery refresh (every deep cycle) ===
+        if self.auto_discover and is_deep_cycle and (self.cycle_count - self.last_discovery_cycle >= 15):
+            print("\n[Auto-Discover] Refreshing tradable coin list from Binance market...")
+            new_symbols = self.scanner.discover()
+            # Keep any coins we are currently holding even if they drop out of top list
+            holding_symbols = list(self.holdings.keys())
+            self.symbols = list(set(new_symbols + holding_symbols))[:15]
+            self.last_discovery_cycle = self.cycle_count
+            print(f"[Auto-Discover] Now monitoring: {self.symbols}")
 
     def _perform_self_correction_review(self, current_prices: dict):
         """xAI reviews the last 15 minutes of DeepSeek decisions and teaches it if wrong."""
