@@ -72,12 +72,12 @@ The trader now uses two different "models" at different frequencies:
 - **Every 15 minutes** — `xai` (DeepXAIAnalyzer): deeper, more conservative analysis that can return **BOTH** (rotate position)
 
 ```bash
-PYTHONPATH=. python src/main.py --symbol BTCUSDT,ETHUSDT --live --interval 1h
+PYTHONPATH=. python src/main.py --symbol BTCUSDT --live --interval 1h \
+  --initial-cash 376 --initial-btc 0.005
 ```
 
 **Features**
-- Starts with $900 USD
-- Supports multiple symbols (BTCUSDT + ETHUSDT by default)
+- Custom initial portfolio supported (example: 376 FDUSD + 0.005 BTC)
 - `BOTH` decision from the 15-min xAI model = sell current holding + buy the new opportunity
 - All decisions, trades, and equity history saved to `trading.db`
 - Press Ctrl+C to stop

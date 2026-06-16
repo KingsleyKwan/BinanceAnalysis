@@ -29,13 +29,19 @@ class LivePaperTrader:
     Decision types: BUY, SELL, BOTH, HOLD
     """
 
-    def __init__(self, symbols: List[str] = None, interval: str = "1h", initial_cash: float = 900.0):
-        self.symbols = symbols or ["BTCUSDT", "ETHUSDT"]
+    def __init__(self, symbols: List[str] = None, interval: str = "1h",
+                 initial_cash: float = 376.0,
+                 initial_holdings: Dict[str, Dict] = None):
+        """
+        initial_cash: starting stablecoin balance (FDUSD / USDT)
+        initial_holdings: e.g. {"BTCUSDT": {"amount": 0.005, "avg_buy_price": 65000.0}}
+        """
+        self.symbols = symbols or ["BTCUSDT"]
         self.interval = interval
         self.fetcher = BinanceDataFetcher()
         self.db = TradingDB()
         self.cash = initial_cash
-        self.holdings: Dict[str, Dict] = {}
+        self.holdings: Dict[str, Dict] = initial_holdings or {}
         self.cycle_count = 0
 
         # Choose real LLM or local rule-based based on API keys
@@ -46,7 +52,7 @@ class LivePaperTrader:
         self.deep_analyzer = RealXAIAnalyzer() if use_real_xai else DeepXAIAnalyzer()
 
         self.paused = False
-        self.current_window_decision_ids = []   # for 15-min self-review
+        self.current_window_decision_ids = []
 
         if use_real_deepseek or use_real_xai:
             print(f"[LLM] Using real APIs → DeepSeek: {use_real_deepseek}, xAI: {use_real_xai}")
@@ -58,9 +64,18 @@ class LivePaperTrader:
 
     def _load_state(self):
         portfolio = self.db.get_latest_portfolio()
-        self.cash = portfolio["cash"]
-        self.holdings = self.db.get_holdings()
-        print(f"[INIT] Cash=${self.cash:.2f} | Holdings={self.holdings or 'none'}")
+        if portfolio["timestamp"] is None:
+            # First run → seed with user-provided initial state
+            print(f"[INIT] First run detected. Seeding with provided initial portfolio...")
+            now = datetime.now(timezone.utc).isoformat()
+            self.db.save_snapshot(now, self.cash, self.cash)  # initial equity = cash
+            for sym, h in self.holdings.items():
+                self.db.update_holding(sym, h["amount"], h.get("avg_buy_price", 0), now)
+            print(f"[INIT] Seeded: Cash=${self.cash:.2f} | Holdings={self.holdings}")
+        else:
+            self.cash = portfolio["cash"]
+            self.holdings = self.db.get_holdings()
+            print(f"[INIT] Resumed from DB: Cash=${self.cash:.2f} | Holdings={self.holdings or 'none'}")
 
     def _total_equity(self, prices: Dict[str, float]) -> float:
         eq = self.cash

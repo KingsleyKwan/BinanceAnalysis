@@ -53,7 +53,7 @@ TRANSLATIONS = {
 }
 
 def main():
-    parser = argparse.ArgumentParser(description="Binance AI Trading Analysis & Simulation (支援粵語)")
+    parser = argparse.ArgumentParser(description="Binance AI Trading Analysis & Simulation with Self-Correction (支援粵語)")
     parser.add_argument("--symbol", default="BTCUSDT", help="Trading pair, e.g. BTCUSDT")
     parser.add_argument("--analyze", action="store_true", help="Run current AI analysis")
     parser.add_argument("--backtest", action="store_true", help="Run backtest simulation")
@@ -62,11 +62,25 @@ def main():
     parser.add_argument("--lang", "-l", choices=["en", "yue"], default="en",
                         help="Output language: en (English) or yue (Cantonese)")
     parser.add_argument("--live", action="store_true",
-                        help="Run long-term live paper trading simulation (every 15 min, starts with $900)")
+                        help="Run long-term live paper trading simulation with self-correction")
+    parser.add_argument("--initial-cash", type=float, default=376.0,
+                        help="Starting stablecoin balance (FDUSD/USDT) for --live mode")
+    parser.add_argument("--initial-btc", type=float, default=0.005,
+                        help="Starting BTC amount held (for --live mode)")
     args = parser.parse_args()
 
     if args.live:
-        trader = LivePaperTrader(symbols=[args.symbol], interval=args.interval, initial_cash=900.0)
+        initial_holdings = {}
+        if args.initial_btc > 0:
+            # Assume average buy price around current market (will be overridden by first analysis anyway)
+            initial_holdings["BTCUSDT"] = {"amount": args.initial_btc, "avg_buy_price": 65000.0}
+
+        trader = LivePaperTrader(
+            symbols=[args.symbol],
+            interval=args.interval,
+            initial_cash=args.initial_cash,
+            initial_holdings=initial_holdings
+        )
         trader.run_forever()
         return
 
