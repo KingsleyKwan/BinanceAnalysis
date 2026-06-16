@@ -92,6 +92,27 @@ BTCUSDT: BOTH (conf 78%) | $66,050.00
 
 This setup lets you test whether the combination of fast cheap signals + periodic deep thinking can profitably grow the account over days or weeks.
 
+### Using Real DeepSeek + xAI APIs (Optional but Recommended)
+
+By default the system uses local rule-based analyzers (no cost).
+
+To use real LLMs:
+
+1. Copy `.env.example` → `.env`
+2. Add your keys:
+
+```bash
+DEEPSEEK_API_KEY=sk-...
+XAI_API_KEY=xai-...
+```
+
+3. Re-run the live trader. It will automatically switch to real APIs when keys are detected.
+
+**Important cost notes**
+- DeepSeek is very cheap (~$0.14 / 1M tokens). 1-min calls are feasible.
+- xAI (Grok) is more expensive. 15-min calls = ~96 calls/day.
+- Monitor your usage. The system falls back to local analyzers if API fails.
+
 ## Disclaimer
 
 This is for educational and simulation purposes only. Not financial advice. Cryptocurrency trading involves substantial risk.

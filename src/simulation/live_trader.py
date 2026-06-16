@@ -1,10 +1,17 @@
+import os
 import time
 from datetime import datetime, timezone
 from typing import List, Dict, Optional
+from dotenv import load_dotenv
 from src.data.fetcher import BinanceDataFetcher
 from src.analysis.fast_deepseek import FastDeepSeekAnalyzer
 from src.analysis.deep_xai import DeepXAIAnalyzer
+from src.analysis.real_deepseek import RealDeepSeekAnalyzer
+from src.analysis.real_xai import RealXAIAnalyzer
 from src.simulation.database import TradingDB
+from src.analysis.real_xai import RealXAIAnalyzer as _RealXAIAnalyzer  # for isinstance check
+
+load_dotenv()
 
 FEE_RATE = 0.001
 POLL_INTERVAL_SEC = 60          # 1 minute
@@ -25,12 +32,23 @@ class LivePaperTrader:
         self.symbols = symbols or ["BTCUSDT", "ETHUSDT"]
         self.interval = interval
         self.fetcher = BinanceDataFetcher()
-        self.fast_analyzer = FastDeepSeekAnalyzer()
-        self.deep_analyzer = DeepXAIAnalyzer()
         self.db = TradingDB()
         self.cash = initial_cash
-        self.holdings: Dict[str, Dict] = {}   # symbol -> {amount, avg_buy_price}
+        self.holdings: Dict[str, Dict] = {}
         self.cycle_count = 0
+
+        # Choose real LLM or local rule-based based on API keys
+        use_real_deepseek = bool(os.getenv("DEEPSEEK_API_KEY"))
+        use_real_xai = bool(os.getenv("XAI_API_KEY"))
+
+        self.fast_analyzer = RealDeepSeekAnalyzer() if use_real_deepseek else FastDeepSeekAnalyzer()
+        self.deep_analyzer = RealXAIAnalyzer() if use_real_xai else DeepXAIAnalyzer()
+
+        if use_real_deepseek or use_real_xai:
+            print(f"[LLM] Using real APIs → DeepSeek: {use_real_deepseek}, xAI: {use_real_xai}")
+        else:
+            print("[LLM] Using local rule-based analyzers (no API keys found)")
+
         self._load_state()
 
     def _load_state(self):
@@ -124,7 +142,8 @@ class LivePaperTrader:
         for symbol in self.symbols:
             try:
                 df = self.fetcher.get_recent_data(symbol, days=8, interval=self.interval)
-                decision = analyzer.analyze(df, symbol)
+                holdings_context = self.holdings if isinstance(analyzer, _RealXAIAnalyzer) else None
+                decision = analyzer.analyze(df, symbol, holdings=holdings_context) if holdings_context else analyzer.analyze(df, symbol)
                 current_price = df.iloc[-1]["close"]
                 prices[symbol] = current_price
 
