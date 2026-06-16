@@ -72,15 +72,24 @@ The trader now uses two different "models" at different frequencies:
 - **Every 15 minutes** — `xai` (DeepXAIAnalyzer): deeper, more conservative analysis that can return **BOTH** (rotate position)
 
 ```bash
+# Single coin
 PYTHONPATH=. python src/main.py --symbol BTCUSDT --live --interval 1h \
   --initial-cash 376 --initial-btc 0.005
+
+# Multi-coin mode (recommended for maximum profit potential)
+PYTHONPATH=. python src/main.py --symbol "BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT" \
+  --live --interval 1h --initial-cash 376 --initial-btc 0.005
 ```
 
 **Features**
+- Multi-coin trading supported — system can hold and rotate between multiple assets
 - Custom initial portfolio supported (example: 376 FDUSD + 0.005 BTC)
 - `BOTH` decision from the 15-min xAI model = sell current holding + buy the new opportunity
+- Per-coin risk limit (~28% of total equity max per position)
 - All decisions, trades, and equity history saved to `trading.db`
 - Press Ctrl+C to stop
+
+The goal of the system is to **maximize profit** by letting the dual-model AI (deepseek-v4-flash + grok-4.3) dynamically allocate across multiple high-quality coins while the self-correction mechanism continuously improves decision quality.
 
 Example output:
 ```

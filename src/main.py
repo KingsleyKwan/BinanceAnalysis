@@ -54,7 +54,7 @@ TRANSLATIONS = {
 
 def main():
     parser = argparse.ArgumentParser(description="Binance AI Trading Analysis & Simulation with Self-Correction (支援粵語)")
-    parser.add_argument("--symbol", default="BTCUSDT", help="Trading pair, e.g. BTCUSDT")
+    parser.add_argument("--symbol", default="BTCUSDT", help="Trading pair (single) or comma-separated list for multi-coin mode")
     parser.add_argument("--analyze", action="store_true", help="Run current AI analysis")
     parser.add_argument("--backtest", action="store_true", help="Run backtest simulation")
     parser.add_argument("--interval", default="1h", help="Kline interval (1h, 4h, 1d, etc.)")
@@ -62,7 +62,7 @@ def main():
     parser.add_argument("--lang", "-l", choices=["en", "yue"], default="en",
                         help="Output language: en (English) or yue (Cantonese)")
     parser.add_argument("--live", action="store_true",
-                        help="Run long-term live paper trading simulation with self-correction")
+                        help="Run long-term live paper trading simulation with self-correction (multi-coin supported)")
     parser.add_argument("--initial-cash", type=float, default=376.0,
                         help="Starting stablecoin balance (FDUSD/USDT) for --live mode")
     parser.add_argument("--initial-btc", type=float, default=0.005,
@@ -70,13 +70,15 @@ def main():
     args = parser.parse_args()
 
     if args.live:
+        # Support comma-separated symbols for multi-coin trading
+        symbols = [s.strip().upper() for s in args.symbol.split(",") if s.strip()]
+
         initial_holdings = {}
         if args.initial_btc > 0:
-            # Assume average buy price around current market (will be overridden by first analysis anyway)
             initial_holdings["BTCUSDT"] = {"amount": args.initial_btc, "avg_buy_price": 65000.0}
 
         trader = LivePaperTrader(
-            symbols=[args.symbol],
+            symbols=symbols,
             interval=args.interval,
             initial_cash=args.initial_cash,
             initial_holdings=initial_holdings

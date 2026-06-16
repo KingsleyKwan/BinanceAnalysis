@@ -105,8 +105,12 @@ class LivePaperTrader:
             current_price, model
         )
 
+        # Multi-coin risk control: do not let any single position exceed ~28% of total equity
+        total_equity = self._total_equity(prices) if prices else (self.cash + sum(h["amount"] * h.get("avg_buy_price", 0) for h in self.holdings.values()))
+
         if action == "BUY" and self.cash > 40 and amount_held == 0:
-            invest = self.cash * POSITION_SIZE_PCT
+            max_position_value = total_equity * 0.28
+            invest = min(self.cash * POSITION_SIZE_PCT, max_position_value)
             if invest < 25:
                 return
             amt = invest / current_price
@@ -139,9 +143,12 @@ class LivePaperTrader:
                 self.holdings[symbol] = {"amount": 0, "avg_buy_price": 0}
                 self.db.update_holding(symbol, 0, 0, now)
 
-            # Then buy this symbol with fresh capital
+            # Then buy this symbol with fresh capital (respect per-coin risk limit)
             if self.cash > 50:
-                invest = self.cash * POSITION_SIZE_PCT
+                max_position_value = total_equity * 0.28
+                invest = min(self.cash * POSITION_SIZE_PCT, max_position_value)
+                if invest < 25:
+                    return
                 amt = invest / current_price
                 fee = invest * FEE_RATE
                 self.cash -= (invest + fee)
@@ -175,27 +182,22 @@ class LivePaperTrader:
                 print(f"{symbol}: {decision['action']} (conf {decision['confidence']*100:.0f}%) | ${current_price:,.2f}")
                 self._execute_decision(symbol, decision, current_price, is_deep=is_deep_cycle)
 
-                # Log DeepSeek decisions for later xAI review
+                # Log DeepSeek decisions for later xAI review (only real API calls)
                 if "deepseek" in analyzer.name.lower() and decision.get("model", "").startswith("deepseek"):
-                    from src.analysis.fast_deepseek import FastDeepSeekAnalyzer
-                    # Only log real DeepSeek decisions
-                    if not isinstance(analyzer, FastDeepSeekAnalyzer):
-                        ema_trend = "above" if current_price > df.iloc[-1].get("ema_20", 0) else "below"
-                        vol_ratio = df.iloc[-1].get("volume", 0) / max(df.iloc[-1].get("volume_sma", 1), 1)
-                        self.db.log_deepseek_decision(
-                            datetime.now(timezone.utc).isoformat(),
-                            symbol,
-                            decision["action"],
-                            decision["confidence"],
-                            decision.get("reason", ""),
-                            current_price,
-                            decision["indicators"]["rsi"],
-                            decision["indicators"]["macd_hist"],
-                            ema_trend,
-                            vol_ratio
-                        )
-                        # keep track for current window
-                        self.current_window_decision_ids.append(symbol)  # simplified
+                    ema_trend = "above" if current_price > df.iloc[-1].get("ema_20", 0) else "below"
+                    vol_ratio = df.iloc[-1].get("volume", 0) / max(df.iloc[-1].get("volume_sma", 1), 1)
+                    self.db.log_deepseek_decision(
+                        datetime.now(timezone.utc).isoformat(),
+                        symbol,
+                        decision["action"],
+                        decision["confidence"],
+                        decision.get("reason", ""),
+                        current_price,
+                        decision["indicators"]["rsi"],
+                        decision["indicators"]["macd_hist"],
+                        ema_trend,
+                        vol_ratio
+                    )
             except Exception as e:
                 print(f"Error on {symbol}: {e}")
 
