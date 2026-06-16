@@ -109,8 +109,10 @@ XAI_API_KEY=xai-...
 3. Re-run the live trader. It will automatically switch to real APIs when keys are detected.
 
 **Important cost notes**
+- Using `deepseek-v4-flash` (fast & cheap) every minute + `grok-4.3` every 15 minutes.
 - DeepSeek is very cheap (~$0.14 / 1M tokens). 1-min calls are feasible.
 - xAI (Grok) is more expensive. 15-min calls = ~96 calls/day.
+- You can override models via `DEEPSEEK_MODEL` and `XAI_MODEL` in `.env`.
 - Monitor your usage. The system falls back to local analyzers if API fails.
 
 ## Disclaimer

@@ -19,8 +19,8 @@ class RealXAIAnalyzer(BaseAnalyzer):
 
     name = "xai-real"
 
-    def __init__(self, model: str = "grok-3-latest"):
-        self.model = model
+    def __init__(self, model: str = None):
+        self.model = model or os.getenv("XAI_MODEL", "grok-4.3")
         self.client = None
         if XAI_API_KEY:
             self.client = OpenAI(api_key=XAI_API_KEY, base_url=XAI_BASE_URL)
